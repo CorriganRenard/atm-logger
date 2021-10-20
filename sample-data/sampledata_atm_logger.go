@@ -3,9 +3,9 @@ package sampledata
 import "strconv"
 import "sort"
 
-const _atm_logger_name = " a lessn than  b, do something a greater than  b, do something else a (%s) == b (%s), do something"
+const _atm_logger_name = "a lessn than  b, do somethinga greater than  b, do something elsea (%s) == b (%s), do something"
 
-var _atm_logger_index = [...]uint8{0, 30, 67, 98}
+var _atm_logger_index = [...]uint8{0, 29, 65, 95}
 var _atm_logger_line_nums = [...]int{11, 14, 17}
 
 func IdxToRule(i int) string {
@@ -18,7 +18,7 @@ func IdxToRule(i int) string {
 func LineNumToIndex(i int) int {
 	k := searchInts(_atm_logger_line_nums, i)
 	if _atm_logger_line_nums[k] == i {
-		return k
+		return k + 1
 	}
 	return -1
 }

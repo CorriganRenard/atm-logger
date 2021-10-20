@@ -210,7 +210,7 @@ const indexToRule = `func IdxToRule(i int) string {
 const numToIdx = `func LineNumToIndex(i int) int {
     k := searchInts(_atm_logger_line_nums, i)
     if _atm_logger_line_nums[k] == i{
-         return k
+         return k 
     }
     return -1
 }

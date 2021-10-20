@@ -9,4 +9,7 @@ import (
 func TestFoo(t *testing.T) {
 	t.Log("test")
 	sampledata.CompareInt(1, 3)
+
+	//sampledata.LineNumToIndex()
+
 }

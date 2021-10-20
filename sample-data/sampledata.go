@@ -22,7 +22,9 @@ func CompareInt(a, b int) {
 
 func saveAction(args ...interface{}) uint64 {
 	_, _, line, _ := runtime.Caller(1)
-	log.Printf("line number: %v args: %#v", line, args)
+	//log.Printf("line number: %v args: %#v", line, args)
 
+	idx := LineNumToIndex(line)
+	log.Printf("rule triggered: %v", IdxToRule(idx))
 	return 0
 }
