@@ -1,8 +1,31 @@
 package main
 
-import "log"
+import (
+	"fmt"
+	"log"
+	"os"
+
+	"golang.org/x/tools/go/packages"
+)
 
 func main() {
 
 	log.Printf("hello world!")
+
+	cfg := &packages.Config{Mode: packages.NeedFiles | packages.NeedSyntax}
+	pkgs, err := packages.Load(cfg, ".")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "load: %v\n", err)
+		os.Exit(1)
+	}
+	if packages.PrintErrors(pkgs) > 0 {
+		os.Exit(1)
+	}
+
+	// Print the names of the source files
+	// for each package listed on the command line.
+	for _, pkg := range pkgs {
+		c
+		fmt.Println(pkg.ID, pkg.GoFiles)
+	}
 }
