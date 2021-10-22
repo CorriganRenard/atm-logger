@@ -47,7 +47,8 @@ func main() {
 		fmt.Fprintf(buf, "package %s\n\n", pkg.Name)
 		//fmt.Fprintf(buf, "import \"fmt\"\n\n")
 		fmt.Fprintf(buf, "import \"strconv\"\n")
-		fmt.Fprintf(buf, "import \"sort\"\n\n")
+		fmt.Fprintf(buf, "import \"sort\"\n")
+		fmt.Fprintf(buf, "import \"runtime\"\n\n")
 
 		for _, file := range pkg.GoFiles {
 			//fmt.Println(file)
@@ -60,8 +61,15 @@ func main() {
 			defer f.Close()
 
 			log.Println("got here 1")
-			comments := make([]string, 0)
+			tabs := make([]int, 0)
+			titles := make([]string, 0)
+			details := make([]string, 0)
 			lineNums := make([]int, 0)
+
+			// this tells us we just finished a rule
+			var checkDetails bool
+
+			var detailBuilder strings.Builder
 
 			scanner := bufio.NewScanner(f)
 			lineNum := 1
@@ -70,11 +78,20 @@ func main() {
 				lineText := scanner.Text()
 				if strings.HasPrefix(strings.TrimSpace(lineText), "// RULE:") {
 					log.Printf("line: %d: %s", lineNum, strings.TrimPrefix(strings.TrimSpace(lineText), "// RULE: "))
-					comments = append(comments, strings.TrimPrefix(strings.TrimSpace(lineText), "// RULE: "))
+					titles = append(titles, strings.TrimPrefix(strings.TrimSpace(lineText), "// RULE: "))
+					tabs = append(tabs, countTabs(lineText))
 					lineNums = append(lineNums, lineNum)
+					checkDetails = true
 
 					// make map of hash to index
 
+				} else if checkDetails && strings.HasPrefix(strings.TrimSpace(lineText), "//") {
+					detailBuilder.WriteString(strings.TrimPrefix(strings.TrimSpace(lineText), "// "))
+
+				} else if checkDetails {
+					details = append(details, detailBuilder.String())
+					checkDetails = false
+					detailBuilder.Reset()
 				}
 				lineNum++
 			}
@@ -83,24 +100,21 @@ func main() {
 				log.Fatal(err)
 			}
 
-			if len(comments) > 0 {
-				declareIndexAndNameVar(buf, comments, lineNums)
+			if len(titles) > 0 {
+				declareIndexAndNameVar(buf, titles, lineNums)
+				declareTabAndDetailVar(buf, details, tabs)
 				fmt.Fprintf(buf, "\n\n")
 				_, err = fmt.Fprintf(buf, indexToRule)
-				if err != nil {
-					log.Printf("error printing indexToRule: %v", err)
-				}
-
 				fmt.Fprintf(buf, "\n\n")
 				_, err = fmt.Fprintf(buf, numToIdx)
-				if err != nil {
-					log.Printf("error printing numToIdx: %v", err)
-				}
 				fmt.Fprintf(buf, "\n\n")
 				_, err = fmt.Fprintf(buf, searchInts, len(lineNums))
-				if err != nil {
-					log.Printf("error printing searchInts: %v", err)
-				}
+				fmt.Fprintf(buf, "\n\n")
+				_, err = fmt.Fprintf(buf, getRule)
+				fmt.Fprintf(buf, "\n\n")
+				_, err = fmt.Fprintf(buf, logger)
+				fmt.Fprintf(buf, "\n\n")
+				_, err = fmt.Fprintf(buf, summary)
 
 			}
 
@@ -119,6 +133,16 @@ func main() {
 		}
 
 	}
+}
+
+func countTabs(s string) int {
+
+	for k, v := range s {
+		if v != '\t' {
+			return k
+		}
+	}
+	return 0
 }
 
 // // custom stringer
@@ -154,6 +178,49 @@ func usize(n int) int {
 		// 2^32 is enough constants for anyone.
 		return 32
 	}
+}
+
+// declareIndexAndNameVar is the single-run version of declareIndexAndNameVars
+func declareTabAndDetailVar(b *bytes.Buffer, details []string, tabs []int) {
+	index, name, tabStr := createTabAndDetailDecl(details, tabs)
+	fmt.Fprintf(b, "const %s\n", name)
+	fmt.Fprintf(b, "var %s\n", index)
+	fmt.Fprintf(b, "var %s\n", tabStr)
+
+	//fmt.Fprintf(b, stringOneRun, "_atm_logger_name")
+
+}
+
+// createTabAndDetailDecl returns the pair of declarations for the run. The caller will add "const" and "var".
+func createTabAndDetailDecl(comments []string, lineNums []int) (string, string, string) {
+	b := new(bytes.Buffer)
+	indexes := make([]int, len(comments))
+	for i := range comments {
+		b.WriteString(comments[i])
+		indexes[i] = b.Len()
+	}
+	nameConst := fmt.Sprintf("_atm_logger_detail = %q", b.String())
+	nameLen := b.Len()
+	b.Reset()
+	fmt.Fprintf(b, "_atm_logger_detail_index = [...]uint%d{0, ", usize(nameLen))
+	for i, v := range indexes {
+		if i > 0 {
+			fmt.Fprintf(b, ", ")
+		}
+		fmt.Fprintf(b, "%d", v)
+	}
+	fmt.Fprintf(b, "}")
+	index := b.String()
+	b.Reset()
+	fmt.Fprintf(b, "_atm_logger_tab_counts = [...]int{")
+	for i, v := range lineNums {
+		if i > 0 {
+			fmt.Fprintf(b, ", ")
+		}
+		fmt.Fprintf(b, "%d", v)
+	}
+	fmt.Fprintf(b, "}")
+	return index, nameConst, b.String()
 }
 
 // declareIndexAndNameVar is the single-run version of declareIndexAndNameVars
@@ -199,18 +266,26 @@ func createIndexAndNameDecl(comments []string, lineNums []int) (string, string, 
 	return index, nameConst, b.String()
 }
 
-const indexToRule = `func IdxToRule(i int) string {
+const indexToRule = `func idxToRule(i int) string {
 	if i >= len(_atm_logger_index)-1 {
 		return strconv.FormatInt(int64(i), 10) 
 	}
 	return _atm_logger_name[_atm_logger_index[i]:_atm_logger_index[i+1]]
 }
+
+func idxToDetail(i int) string {
+	if i >= len(_atm_logger_detail_index)-1 {
+		return strconv.FormatInt(int64(i), 10)
+	}
+	return _atm_logger_detail[_atm_logger_detail_index[i]:_atm_logger_detail_index[i+1]]
+}
+
 `
 
-const numToIdx = `func LineNumToIndex(i int) int {
+const numToIdx = `func lineNumToIndex(i int) int {
     k := searchInts(_atm_logger_line_nums, i)
-    if _atm_logger_line_nums[k] == i{
-         return k 
+    if _atm_logger_line_nums[k-1] == i-1 {	
+	return k - 1
     }
     return -1
 }
@@ -219,6 +294,84 @@ const numToIdx = `func LineNumToIndex(i int) int {
 const searchInts = `func searchInts(a [%d]int, x int) int {
 	return sort.Search(len(a), func(i int) bool { return a[i] >= x })
 }
+`
+
+const getRule = `// GetRule takes the line number at runtime and converts it to the nearest rule comment above it
+func GetRule(runtimeLine int) string {
+	return idxToRule(lineNumToIndex(runtimeLine))
+}
+`
+
+const logger = `type logger struct {
+	RuntimeLines  []int
+	TitleArgs     [][]interface{}
+        DetailArgs    [][]interface{}
+}
+
+func (l *logger) SetTitle(args ...interface{}) *logger {
+	_, _, line, _ := runtime.Caller(1)
+	l.RuntimeLines = append(l.RuntimeLines, line)
+	l.TitleArgs = append(l.TitleArgs, args)
+        return l
+}
+
+
+func (l *logger) SetDetail(args ...interface{}) {
+	l.DetailArgs = append(l.DetailArgs, args)
+}
+
+
+func (l *logger) GetSummaryAll() RuleSummary {
+        
+	runtimeIdx := 0
+	nextTriggeredIdx := lineNumToIndex(l.RuntimeLines[runtimeIdx])
+	// _ = nextTriggered
+	// var _log_summary RuleSummary
+	// var currentLevel int
+	for k, _ := range _atm_logger_line_nums {
+		rd := RuleData{
+			Title:     idxToRule(k),
+			Detail:    idxToDetail(k),
+			HasDetail: len(idxToDetail(k)) > 0,
+			TabNum:    _atm_logger_tab_counts[k],
+		}
+
+		if nextTriggeredIdx == k && runtimeIdx < len(l.RuntimeLines) {
+			rd.Triggered = true
+
+			nextTriggeredIdx = lineNumToIndex(l.RuntimeLines[runtimeIdx])
+			runtimeIdx++
+		}
+
+		// // set title, detail
+
+		// if k == nextTriggeredIdx {
+		// 	// set to triggered
+		// }
+		// //_atm_logger_tab_counts[k]
+
+	}
+
+	return RuleSummary{}
+}
+
+func (l *logger) GetSummaryTriggered() RuleSummary {
+
+
+	return RuleSummary{}
+}
+`
+
+const summary = `type RuleData struct{
+        Title     string
+        HasDetail bool
+        Detail    string
+        TabNum    int
+        Triggered bool
+        Children []RuleData
+}
+
+type RuleSummary []RuleData
 `
 
 // func Search(n int, f func(int) bool) int {

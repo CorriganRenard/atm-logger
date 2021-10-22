@@ -1,30 +1,31 @@
 package sampledata
 
-import (
-	"log"
-	"runtime"
-)
-
 //go:generate atm-logger
-func CompareInt(a, b int) {
+func CompareInt(a, b, c, d int) *logger {
+	l := &logger{}
 	if a < b {
-		// RULE: a lessn than  b, do something
-		saveAction(a, b)
+		// RULE: a (%v)lessn than  b(%v), do something
+		// some details here %v
+		l.SetTitle(a, b).SetDetail(8)
 	} else if a > b {
-		// RULE: a greater than  b, do something else
-		saveAction(a, b)
+		// RULE: a (%v) greater than  b(%v), do something else
+		// and here are some more details... %s
+		l.SetTitle(a, b).SetDetail("some more detail")
 	} else {
-		// RULE: a (%s) == b (%s), do something
-		saveAction(a, b)
+		// RULE: a (%v) == b (%v), do something
+		l.SetTitle(a, b)
+
+		if c < d {
+			// RULE: c (%v) < d (%v), do something else
+			l.SetTitle(c, d)
+		} else if c > d {
+			// RULE: c (%v) > d (%v), do something else once more
+			l.SetTitle(c, d)
+		} else {
+			// RULE: c (%v) == d (%v), do something else again
+			l.SetTitle(c, d)
+		}
 	}
+	return l
 
-}
-
-func saveAction(args ...interface{}) uint64 {
-	_, _, line, _ := runtime.Caller(1)
-	//log.Printf("line number: %v args: %#v", line, args)
-
-	idx := LineNumToIndex(line)
-	log.Printf("rule triggered: %v", IdxToRule(idx))
-	return 0
 }
