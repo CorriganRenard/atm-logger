@@ -4,7 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"go/ast"
 	"go/format"
+	"go/parser"
+	"go/token"
 	"io"
 	"io/ioutil"
 	"log"
@@ -15,8 +18,6 @@ import (
 )
 
 func main() {
-
-	log.Printf("hello world!")
 
 	cfg := &packages.Config{Mode: packages.NeedFiles | packages.NeedName | packages.NeedSyntax, Tests: false}
 	pkgs, err := packages.Load(cfg, ".")
@@ -39,19 +40,72 @@ func main() {
 
 		buf := new(bytes.Buffer)
 
+		cp := newCodeParser()
+
 		log.Printf("package name: %s", pkg.Name)
 		pathSlice := strings.Split(pkg.GoFiles[0], "/")
 		pathSlice = pathSlice[:len(pathSlice)-1]
 		pathSlice = append(pathSlice, fmt.Sprintf("%s_atm_logger.go", pkg.Name))
 
 		fmt.Fprintf(buf, "package %s\n\n", pkg.Name)
-		//fmt.Fprintf(buf, "import \"fmt\"\n\n")
+		fmt.Fprintf(buf, "import \"fmt\"\n")
 		fmt.Fprintf(buf, "import \"strconv\"\n")
 		fmt.Fprintf(buf, "import \"sort\"\n")
+		fmt.Fprintf(buf, "import \"log\"\n")
 		fmt.Fprintf(buf, "import \"runtime\"\n\n")
 
+		//expFuncMap := make(map[string]posRange, 0)
+		//localFuncMap := make(map[string]posRange, 0)
+
 		for _, file := range pkg.GoFiles {
-			//fmt.Println(file)
+
+			if strings.HasSuffix(file, "_test.go") {
+				continue
+			}
+			fset := token.NewFileSet()
+			node, err := parser.ParseFile(fset, file, nil, parser.ParseComments)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			ast.Inspect(node, func(n ast.Node) bool {
+				// Find  Functions
+				fn, ok := n.(*ast.FuncDecl)
+				if ok {
+
+					pr := posRange{
+						OffsetStart: int64(fset.Position(fn.Body.Lbrace).Offset),
+						StartLine:   fset.Position(fn.Body.Lbrace).Line,
+						EndLine:     fset.Position(fn.Body.Rbrace).Line,
+					}
+					if fn.Name.IsExported() {
+
+						//expFuncMap[fn.Name.Name] = pr
+						//log.Printf("exp fname: %v", fn.Name)
+						//log.Printf("file line %d", fset.Position(fn.Pos()).Line)
+					}
+					cp.localFuncMap[fn.Name.Name] = pr
+					//log.Printf("non-exp fname: %v", fn.Name)
+					//log.Printf("file line %d", fset.Position(fn.Pos()).Line)
+
+					// only go one level down
+					return false
+				}
+				return true
+
+			})
+
+		}
+
+		log.Printf("completed ast inspect funcs")
+
+		for _, file := range pkg.GoFiles {
+
+			cp.reset()
+			if strings.HasSuffix(file, "_test.go") {
+				continue
+			}
+			fmt.Println(file)
 			f, err := os.Open(file)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "open file: %v\n", err)
@@ -60,61 +114,37 @@ func main() {
 			}
 			defer f.Close()
 
-			log.Println("got here 1")
-			tabs := make([]int, 0)
-			titles := make([]string, 0)
-			details := make([]string, 0)
-			lineNums := make([]int, 0)
+			//cp.setScanner(f)
 
-			// this tells us we just finished a rule
-			var checkDetails bool
+			// tabs := make([]int, 0)
+			// titles := make([]string, 0)
+			// details := make([]string, 0)
+			// lineNums := make([]int, 0)
 
-			var detailBuilder strings.Builder
+			// call new func here
 
-			scanner := bufio.NewScanner(f)
-			lineNum := 1
-			// optionally, resize scanner's capacity for lines over 64K, see next example
-			for scanner.Scan() {
-				lineText := scanner.Text()
-				if strings.HasPrefix(strings.TrimSpace(lineText), "// RULE:") {
-					log.Printf("line: %d: %s", lineNum, strings.TrimPrefix(strings.TrimSpace(lineText), "// RULE: "))
-					titles = append(titles, strings.TrimPrefix(strings.TrimSpace(lineText), "// RULE: "))
-					tabs = append(tabs, countTabs(lineText))
-					lineNums = append(lineNums, lineNum)
-					checkDetails = true
-
-					// make map of hash to index
-
-				} else if checkDetails && strings.HasPrefix(strings.TrimSpace(lineText), "//") {
-					detailBuilder.WriteString(strings.TrimPrefix(strings.TrimSpace(lineText), "// "))
-
-				} else if checkDetails {
-					details = append(details, detailBuilder.String())
-					checkDetails = false
-					detailBuilder.Reset()
-				}
-				lineNum++
+			if err := cp.parseCode(f, 0, 0, 0, 0); err != nil {
+				log.Fatalf("error parsing code: %v", err)
 			}
 
-			if err := scanner.Err(); err != nil && err != io.EOF {
-				log.Fatal(err)
-			}
-
-			if len(titles) > 0 {
-				declareIndexAndNameVar(buf, titles, lineNums)
-				declareTabAndDetailVar(buf, details, tabs)
+			if len(cp.titles) > 0 {
+				declareIndexAndNameVar(buf, cp.titles, cp.lineNums)
+				declareTabAndDetailVar(buf, cp.details, cp.tabs)
 				fmt.Fprintf(buf, "\n\n")
 				_, err = fmt.Fprintf(buf, indexToRule)
 				fmt.Fprintf(buf, "\n\n")
 				_, err = fmt.Fprintf(buf, numToIdx)
 				fmt.Fprintf(buf, "\n\n")
-				_, err = fmt.Fprintf(buf, searchInts, len(lineNums))
+				_, err = fmt.Fprintf(buf, searchInts, len(cp.lineNums))
 				fmt.Fprintf(buf, "\n\n")
 				_, err = fmt.Fprintf(buf, getRule)
 				fmt.Fprintf(buf, "\n\n")
 				_, err = fmt.Fprintf(buf, logger)
 				fmt.Fprintf(buf, "\n\n")
 				_, err = fmt.Fprintf(buf, summary)
+
+				fmt.Fprintf(buf, "\n\n")
+				writeAppendChildFunc(buf, maxTabs(cp.tabs))
 
 			}
 
@@ -135,14 +165,178 @@ func main() {
 	}
 }
 
-func countTabs(s string) int {
+type codeParser struct {
+	titles       []string
+	details      []string
+	tabs         []int
+	lineNums     []int
+	tabOffset    int
+	localFuncMap map[string]posRange
+	//scanner      *bufio.Scanner
+	scanOffset     int64
+	callerLineHist []int
+	//	buf          *bytes.Buffer
+}
+
+func (p *codeParser) reset() {
+	p.titles = []string{}
+	p.details = []string{}
+	p.tabs = []int{}
+	p.lineNums = []int{}
+	p.tabOffset = 0
+
+}
+
+func sum(s []int) int {
+	var tot int
+	for _, v := range s {
+		tot += v
+	}
+	return tot
+}
+
+func newCodeParser() codeParser {
+
+	return codeParser{
+		localFuncMap: make(map[string]posRange, 0),
+
+		//buf:          new(bytes.Buffer),
+	}
+
+}
+
+func (p *codeParser) setScanner(f io.ReadSeeker) {
+
+}
+
+type posRange struct {
+	OffsetStart int64
+	StartLine   int
+	EndLine     int
+}
+
+func (p *codeParser) parseCode(f io.ReadSeeker, offsetStart int64, parseLineOffsetStart, parseLineOffsetEnd, callerLine int) error {
+
+	scanner := bufio.NewScanner(f)
+
+	scanOffset := offsetStart
+	scanLines := func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+		advance, token, err = bufio.ScanLines(data, atEOF)
+		scanOffset += int64(advance)
+		return
+	}
+	scanner.Split(scanLines)
+
+	if callerLine > 0 {
+		p.callerLineHist = append(p.callerLineHist, callerLine)
+	}
+
+	defer func() {
+		p.tabOffset--
+		if len(p.callerLineHist) > 0 {
+			p.callerLineHist = p.callerLineHist[:len(p.callerLineHist)-1]
+		}
+		log.Printf("seek back to where we left off: %v", offsetStart)
+		if _, err := f.Seek(offsetStart, 0); err != nil {
+			log.Fatalf("couldn't seek back to offset start: %v", err)
+		}
+	}()
+
+	// this tells us we just finished a rule
+	var checkDetails bool
+	var detailBuilder strings.Builder
+
+	lineNum := 1
+	if parseLineOffsetStart > lineNum {
+		lineNum = parseLineOffsetStart
+	}
+
+	if _, err := f.Seek(offsetStart, 0); err != nil {
+		return err
+	}
+
+	for scanner.Scan() {
+
+		//log.Printf("linenum: %d", lineNum)
+		lineText := scanner.Text()
+		// skip the first line
+		if lineNum < parseLineOffsetStart {
+			continue
+		}
+		if parseLineOffsetEnd > 0 && lineNum >= parseLineOffsetEnd {
+			break
+		}
+		if strings.HasPrefix(strings.TrimSpace(lineText), "// RULE:") {
+			log.Printf("line: %d: %s", lineNum, strings.TrimPrefix(strings.TrimSpace(lineText), "// RULE: "))
+			p.titles = append(p.titles, strings.TrimPrefix(strings.TrimSpace(lineText), "// RULE: "))
+			p.tabs = append(p.tabs, countTabs(lineText, p.tabOffset))
+			p.lineNums = append(p.lineNums, lineNum+sum(p.callerLineHist))
+			checkDetails = true
+
+			// make map of hash to index
+
+		} else if checkDetails && strings.HasPrefix(strings.TrimSpace(lineText), "//") {
+			detailBuilder.WriteString(strings.TrimPrefix(strings.TrimSpace(lineText), "// "))
+
+		} else if checkDetails {
+			p.details = append(p.details, detailBuilder.String())
+			checkDetails = false
+			detailBuilder.Reset()
+		} else if strings.HasPrefix(strings.TrimSpace(lineText), "//") {
+
+		} else {
+
+			// loop over package func decl names
+			// check if this line calls any of them
+			// TODO: should be a better way of doing this in the ast package
+			for k, v := range p.localFuncMap {
+
+				if strings.Contains(lineText, fmt.Sprintf("%s(", k)) && v.StartLine != lineNum {
+
+					log.Printf("%d found func: %v parsing from line %d to %d", lineNum, k, v.StartLine, v.EndLine)
+					// go to this func and scan it next
+					//currentOffset := pos
+					p.tabOffset++
+
+					if err := p.parseCode(f, v.OffsetStart, v.StartLine, v.EndLine, lineNum); err != nil {
+						log.Fatalf("error parsing code %v tab offset: %d", err, p.tabOffset)
+					}
+
+				}
+			}
+
+		}
+		lineNum++
+	}
+
+	if err := scanner.Err(); err != nil && err != io.EOF {
+		return err
+	}
+
+	return nil
+
+}
+
+func maxTabs(tabs []int) int {
+	maxTabs := 0
+	for k, v := range tabs {
+		if k == 0 {
+			maxTabs = v
+		} else if v > tabs[k-1] {
+			maxTabs = v
+		}
+	}
+	return maxTabs
+}
+
+func countTabs(s string, tabOffset int) int {
 
 	for k, v := range s {
 		if v != '\t' {
-			return k
+			return k + tabOffset
 		}
 	}
-	return 0
+	return 0 + tabOffset
 }
 
 // // custom stringer
@@ -178,6 +372,36 @@ func usize(n int) int {
 		// 2^32 is enough constants for anyone.
 		return 32
 	}
+}
+
+// writeAppendChildFunc writes the method to append rules to the RuleData.Children field
+func writeAppendChildFunc(b *bytes.Buffer, maxTab int) {
+	funcStr := createAppendChildFunc(maxTab)
+	fmt.Fprintf(b, "func %s\n", funcStr)
+}
+
+func createAppendChildFunc(maxTab int) string {
+	b := new(bytes.Buffer)
+
+	b.WriteString(`(rs *RuleData) AppendChild(rd RuleData, tabNameCount map[int]int, lastTab int) {
+	switch lastTab {
+`)
+	for i := 0; i < maxTab; i++ {
+		fmt.Fprintf(b, "case %d:\n", i)
+		fmt.Fprintf(b, "rs.Children")
+		for j := 0; j < i; j++ {
+			fmt.Fprintf(b, "[tabNameCount[%d]].Children", j)
+		}
+		fmt.Fprintf(b, " = append(rs.Children")
+		for j := 0; j < i; j++ {
+			fmt.Fprintf(b, "[tabNameCount[%d]].Children", j)
+		}
+		fmt.Fprintf(b, ",  rd)\n")
+	}
+
+	fmt.Fprintf(b, "}\n")
+	fmt.Fprintf(b, "}")
+	return b.String()
 }
 
 // declareIndexAndNameVar is the single-run version of declareIndexAndNameVars
@@ -303,62 +527,155 @@ func GetRule(runtimeLine int) string {
 `
 
 const logger = `type logger struct {
-	RuntimeLines  []int
-	TitleArgs     [][]interface{}
-        DetailArgs    [][]interface{}
+	RuntimeLines []int
+	TitleArgs    [][]interface{}
+	DetailArgs   [][]interface{}
+	InitFunc     string
+	InitFuncInt  int
+}
+
+func (l *logger) newLogger() {
+	l.InitFunc = getCallerFunc()
+
+}
+
+func getCallerFunc() string {
+
+	pcs := make([]uintptr, 10)
+	n := runtime.Callers(2, pcs)
+	pcs = pcs[:n]
+
+	frameLen := 0
+	frames := runtime.CallersFrames(pcs)
+	for {
+		frame, more := frames.Next()
+		if !more {
+			break
+		}
+		log.Printf("frame.Function: %v", frame.Function)
+		return frame.Function
+	}
+
+	return ""
 }
 
 func (l *logger) SetTitle(args ...interface{}) *logger {
-	_, _, line, _ := runtime.Caller(1)
-	l.RuntimeLines = append(l.RuntimeLines, line)
-	l.TitleArgs = append(l.TitleArgs, args)
-        return l
-}
 
+	var previousLines []int
+	// _, _, line, _ := runtime.Caller(1)
+	// l.RuntimeLines = append(l.RuntimeLines, line)
+	// l.TitleArgs = append(l.TitleArgs, args)
+
+	pcs := make([]uintptr, 10)
+	n := runtime.Callers(1, pcs)
+	pcs = pcs[:n]
+
+	frameLen := 0
+	frames := runtime.CallersFrames(pcs)
+	for {
+		frame, more := frames.Next()
+		if !more {
+			break
+		}
+		ff := frame.Function
+		previousLines = append(previousLines, frame.Line)
+		if ff == l.InitFunc {
+
+			break
+		}
+
+	}
+	//l.FrameLen = append(l.FrameLen, frameLen)
+	l.RuntimeLines = append(l.RuntimeLines, sum(previousLines))
+	l.TitleArgs = append(l.TitleArgs, args)
+	return l
+}
 
 func (l *logger) SetDetail(args ...interface{}) {
 	l.DetailArgs = append(l.DetailArgs, args)
 }
 
 
-func (l *logger) GetSummaryAll() RuleSummary {
-        
+func (l *logger) GetSummaryAll() RuleData {
+    
+	var rs RuleData
 	runtimeIdx := 0
 	nextTriggeredIdx := lineNumToIndex(l.RuntimeLines[runtimeIdx])
-	// _ = nextTriggered
-	// var _log_summary RuleSummary
-	// var currentLevel int
+	lastTab := 0
+	firstTab := 0
+	var tabNumCount = make(map[int]int, 0)
 	for k, _ := range _atm_logger_line_nums {
+
+		tab := _atm_logger_tab_counts[k]
+
+		// log.Printf("\n\nidx: %d", k)
+		// log.Printf("tab: %d", tab)
+		// log.Printf("nextTriggeredIdx: %d", nextTriggeredIdx)
+		if firstTab == 0 {
+			firstTab = tab
+		}
 		rd := RuleData{
 			Title:     idxToRule(k),
 			Detail:    idxToDetail(k),
 			HasDetail: len(idxToDetail(k)) > 0,
-			TabNum:    _atm_logger_tab_counts[k],
+			TabNum:    tab,
 		}
 
-		if nextTriggeredIdx == k && runtimeIdx < len(l.RuntimeLines) {
+		if nextTriggeredIdx == k {
+
 			rd.Triggered = true
-
-			nextTriggeredIdx = lineNumToIndex(l.RuntimeLines[runtimeIdx])
+			rd.Open = true
+			rd.Title = fmt.Sprintf(idxToRule(k), l.TitleArgs[runtimeIdx]...)
+			rd.Detail = fmt.Sprintf(idxToDetail(k), l.DetailArgs[runtimeIdx]...)
 			runtimeIdx++
+			if runtimeIdx < len(l.RuntimeLines) {
+				nextTriggeredIdx = lineNumToIndex(l.RuntimeLines[runtimeIdx])
+
+			}
+
 		}
+		tabDiff := tab - firstTab
+		//log.Printf("tabDiff: %d", tabDiff)
 
-		// // set title, detail
+		if _, ok := tabNumCount[tabDiff]; ok {
+			if lastTab > tab {
+				// reset tabNumCount for anything > tabDiff
+				for k, _ := range tabNumCount {
+					if k > tabDiff {
+						delete(tabNumCount, k)
+					}
+				}
+			}
 
-		// if k == nextTriggeredIdx {
-		// 	// set to triggered
-		// }
-		// //_atm_logger_tab_counts[k]
+			tabNumCount[tabDiff] = tabNumCount[tabDiff] + 1
 
+		} else {
+			tabNumCount[tabDiff] = 0
+		}
+		//log.Printf("tabNumCount: %d", tabNumCount)
+		rs.AppendChild(rd, tabNumCount, tabDiff)
+		lastTab = tab
 	}
 
-	return RuleSummary{}
+	return rs
+
 }
 
-func (l *logger) GetSummaryTriggered() RuleSummary {
 
 
-	return RuleSummary{}
+func (l *logger) GetSummaryTriggered() RuleData {
+
+
+	return RuleData{}
+}
+
+
+func sum(s []int) int {
+	var tot int
+	for _, v := range s {
+		tot += v
+	}
+	return tot
 }
 `
 
@@ -368,11 +685,24 @@ const summary = `type RuleData struct{
         Detail    string
         TabNum    int
         Triggered bool
+        Open      bool
         Children []RuleData
 }
-
-type RuleSummary []RuleData
 `
+
+// // AppendChild appends child elements to RuleSummary at level of tab
+// func (rs *RuleData) AppendChild(rd RuleData, tabs []int) {
+// 	switch len(tabs) {
+// 	case 0:
+// 		rs.Children = append(rs.Children, rd)
+// 	case 1:
+// 		rs.Children[tabs[0]].Children = append(rs.Children[tabs[0]].Children, rd)
+// 	case 2:
+// 		rs.Children[tabs[0]].Children[tabs[1]].Children = append(rs.Children[tabs[0]].Children[tabs[1]].Children, rd)
+
+// 	}
+
+// }
 
 // func Search(n int, f func(int) bool) int {
 // 	// Define f(-1) == false and f(n) == true.
