@@ -1,22 +1,20 @@
 package sampledata
 
-import (
-	"fmt"
-	"log"
-	"runtime"
-	"sort"
-	"strconv"
-)
+import "fmt"
+import "strconv"
+import "log"
+import "runtime"
 
-const _atm_logger_name = "a (%v)lessn than  b(%v), do somethinga (%v) greater than  b(%v), do something elsea (%v) == b (%v), do somethingnested func  a (%v)lessn than  b(%v), do somethingnested func a (%v) greater than  b(%v), do something elsenested a (%v) == b (%v), do somethingc (%v) < d (%v), do something elsec (%v) > d (%v), do something else once morec (%v) == d (%v), do something else againnested func  a (%v)lessn than  b(%v), do somethingnested func a (%v) greater than  b(%v), do something elsenested a (%v) == b (%v), do somethingnested func  a (%v)lessn than  b(%v), do somethingnested func a (%v) greater than  b(%v), do something elsenested a (%v) == b (%v), do something"
+const _atm_logger_name = "a (%v)lessn than  b(%v), do somethinga (%v) greater than  b(%v), do something elsea (%v) == b (%v), do somethingnested func  a (%v)lessn than  b(%v), do somethingnested func a (%v) greater than  b(%v), do something elsenested a (%v) == b (%v), do somethingc (%v) < d (%v), do something elsec (%v) > d (%v), do something else once morec (%v) == d (%v), do something else again"
 
-var _atm_logger_index = [...]uint16{0, 37, 82, 112, 162, 219, 256, 290, 334, 375, 425, 482, 519, 569, 626, 663}
-var _atm_logger_line_nums = [...]int{7, 11, 15, 56, 60, 64, 21, 24, 27, 38, 42, 46, 53, 57, 61}
+var _atm_logger_index = [...]uint16{0, 37, 82, 112, 162, 219, 256, 290, 334, 375}
+var _atm_logger_line_nums = [...]int{7, 11, 15, 56, 60, 64, 21, 24, 27}
+var _atm_logger_runtime_line_nums = [...]int{9, 13, 16, 58, 62, 65, 22, 25, 28}
 
-const _atm_logger_detail = "some details here %vand here are some more details... %ssome details here %vand here are some more details... %ssome details here %vand here are some more details... %ssome details here %vand here are some more details... %s"
+const _atm_logger_detail = "some details here %vand here are some more details... %ssome details here %vand here are some more details... %s"
 
-var _atm_logger_detail_index = [...]uint8{0, 20, 56, 56, 76, 112, 112, 112, 112, 112, 132, 168, 168, 188, 224, 224}
-var _atm_logger_tab_counts = [...]int{2, 2, 2, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2}
+var _atm_logger_detail_index = [...]uint8{0, 20, 56, 56, 76, 112, 112, 112, 112, 112}
+var _atm_logger_tab_counts = [...]int{2, 2, 2, 3, 3, 3, 3, 3, 3}
 
 func idxToRule(i int) string {
 	if i >= len(_atm_logger_index)-1 {
@@ -33,15 +31,22 @@ func idxToDetail(i int) string {
 }
 
 func lineNumToIndex(i int) int {
-	k := searchInts(_atm_logger_line_nums, i)
-	if _atm_logger_line_nums[k-1] == i-1 {
-		return k - 1
+	k := searchInts(_atm_logger_runtime_line_nums, i)
+	if k > 0 {
+		return k
 	}
 	return -1
+
 }
 
-func searchInts(a [15]int, x int) int {
-	return sort.Search(len(a), func(i int) bool { return a[i] >= x })
+func searchInts(a [9]int, x int) int {
+	for k, v := range a {
+
+		if v == x {
+			return k
+		}
+	}
+	return -1
 }
 
 // GetRule takes the line number at runtime and converts it to the nearest rule comment above it
@@ -57,12 +62,39 @@ type logger struct {
 	InitFuncInt  int
 }
 
-func (l *logger) newLogger() {
-	l.InitFunc = getCallerFunc()
+func newLogger() *logger {
+
+	return &logger{
+		InitFunc: getCallerFunc(),
+	}
 
 }
 
 func getCallerFunc() string {
+
+	pcs := make([]uintptr, 10)
+	n := runtime.Callers(3, pcs)
+	pcs = pcs[:n]
+
+	//frameLen := 0
+	frames := runtime.CallersFrames(pcs)
+	for {
+		frame, more := frames.Next()
+		if !more {
+			break
+		}
+		//log.Printf("frame.Function: %!v(MISSING)", frame.Function)
+		return frame.Function
+	}
+
+	return ""
+}
+
+func (l *logger) SetTitle(args ...interface{}) *logger {
+	var previousLines []int
+	// _, _, line, _ := runtime.Caller(1)
+	// l.RuntimeLines = append(l.RuntimeLines, line)
+	// l.TitleArgs = append(l.TitleArgs, args)
 
 	pcs := make([]uintptr, 10)
 	n := runtime.Callers(2, pcs)
@@ -75,34 +107,12 @@ func getCallerFunc() string {
 		if !more {
 			break
 		}
-		log.Printf("frame.Function: %s", frame.Function)
-		return frame.Function
-	}
+		// ffSlice := strings.Split(frame.Function, "/")
+		// ff := strings.TrimLeft(ffSlice[len(ffSlice)-1], "sample-data.")
 
-	return ""
-}
-
-func (l *logger) SetTitle(args ...interface{}) *logger {
-
-	var previousLines []int
-	// _, _, line, _ := runtime.Caller(1)
-	// l.RuntimeLines = append(l.RuntimeLines, line)
-	// l.TitleArgs = append(l.TitleArgs, args)
-
-	pcs := make([]uintptr, 10)
-	n := runtime.Callers(1, pcs)
-	pcs = pcs[:n]
-
-	//frameLen := 0
-	frames := runtime.CallersFrames(pcs)
-	for {
-		frame, more := frames.Next()
-		if !more {
-			break
-		}
-		ff := frame.Function
+		log.Printf("frame func: %!v(MISSING) line: %!v(MISSING), initfunc: %!v(MISSING) ", frame.Function, frame.Line, l.InitFunc)
 		previousLines = append(previousLines, frame.Line)
-		if ff == l.InitFunc {
+		if frame.Function == l.InitFunc {
 
 			break
 		}
@@ -122,6 +132,7 @@ func (l *logger) GetSummaryAll() RuleData {
 
 	var rs RuleData
 	runtimeIdx := 0
+	log.Printf("l.RuntimeLines: %!v(MISSING)", l.RuntimeLines)
 	nextTriggeredIdx := lineNumToIndex(l.RuntimeLines[runtimeIdx])
 	lastTab := 0
 	firstTab := 0
@@ -130,7 +141,7 @@ func (l *logger) GetSummaryAll() RuleData {
 
 		tab := _atm_logger_tab_counts[k]
 
-		// log.Printf("\n\nidx: %!d(MISSING)", k)
+		// log.Printf("\n\nidx: %!d(MISSING) lineNum: %!d(MISSING)", k, ln)
 		// log.Printf("tab: %!d(MISSING)", tab)
 		// log.Printf("nextTriggeredIdx: %!d(MISSING)", nextTriggeredIdx)
 		if firstTab == 0 {
@@ -157,7 +168,7 @@ func (l *logger) GetSummaryAll() RuleData {
 
 		}
 		tabDiff := tab - firstTab
-		//log.Printf("tabDiff: %!d(MISSING)", tabDiff)
+		//log.Printf("tabDiff: %!!(MISSING)d(MISSING)", tabDiff)
 
 		if _, ok := tabNumCount[tabDiff]; ok {
 			if lastTab > tab {
@@ -174,7 +185,7 @@ func (l *logger) GetSummaryAll() RuleData {
 		} else {
 			tabNumCount[tabDiff] = 0
 		}
-		//log.Printf("tabNumCount: %!d(MISSING)", tabNumCount)
+		//log.Printf("tabNumCount: %!!(MISSING)d(MISSING)", tabNumCount)
 		rs.AppendChild(rd, tabNumCount, tabDiff)
 		lastTab = tab
 	}

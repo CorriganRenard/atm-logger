@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"flag"
 	"fmt"
 	"go/ast"
 	"go/format"
@@ -17,7 +18,22 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
+var (
+	funcNames = flag.String("func", "", "comma-separated list of func names; must be set")
+)
+
 func main() {
+
+	log.SetFlags(0)
+	log.SetPrefix("logger: ")
+	//flag.Usage = Usage
+	flag.Parse()
+	if len(*funcNames) == 0 {
+		flag.Usage()
+		os.Exit(2)
+	}
+	funcs := strings.Split(*funcNames, ",")
+	func0 := funcs[0]
 
 	cfg := &packages.Config{Mode: packages.NeedFiles | packages.NeedName | packages.NeedSyntax, Tests: false}
 	pkgs, err := packages.Load(cfg, ".")
@@ -50,8 +66,8 @@ func main() {
 		fmt.Fprintf(buf, "package %s\n\n", pkg.Name)
 		fmt.Fprintf(buf, "import \"fmt\"\n")
 		fmt.Fprintf(buf, "import \"strconv\"\n")
-		fmt.Fprintf(buf, "import \"sort\"\n")
-		fmt.Fprintf(buf, "import \"log\"\n")
+		//fmt.Fprintf(buf, "import \"sort\"\n")
+		//fmt.Fprintf(buf, "import \"log\"\n")
 		fmt.Fprintf(buf, "import \"runtime\"\n\n")
 
 		//expFuncMap := make(map[string]posRange, 0)
@@ -74,10 +90,35 @@ func main() {
 				if ok {
 
 					pr := posRange{
-						OffsetStart: int64(fset.Position(fn.Body.Lbrace).Offset),
+						OffsetStart: fset.Position(fn.Body.Lbrace).Offset,
+						OffsetEnd:   fset.Position(fn.Body.Rbrace).Offset,
 						StartLine:   fset.Position(fn.Body.Lbrace).Line,
 						EndLine:     fset.Position(fn.Body.Rbrace).Line,
 					}
+
+					f, err := os.Open(file)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "open file: %v\n", err)
+						os.Exit(1)
+
+					}
+					defer f.Close()
+					r := bufio.NewReader(f)
+					_, err = r.Discard(pr.OffsetStart)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "discard error: %v\n", err)
+						os.Exit(1)
+					}
+
+					pr.Bytes = make([]byte, pr.OffsetEnd-pr.OffsetStart)
+
+					_, err = io.ReadFull(r, pr.Bytes)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "read func error: %v\n", err)
+						os.Exit(1)
+					}
+
+					log.Printf("func %s", fn.Name.Name)
 					if fn.Name.IsExported() {
 
 						//expFuncMap[fn.Name.Name] = pr
@@ -99,81 +140,99 @@ func main() {
 
 		log.Printf("completed ast inspect funcs")
 
-		for _, file := range pkg.GoFiles {
+		// for _, file := range pkg.GoFiles {
 
-			cp.reset()
-			if strings.HasSuffix(file, "_test.go") {
-				continue
+		// 	cp.reset()
+		// 	if strings.HasSuffix(file, "_test.go") {
+		// 		continue
+		// 	}
+		// 	fmt.Println(file)
+		// 	f, err := os.Open(file)
+		// 	if err != nil {
+		// 		fmt.Fprintf(os.Stderr, "open file: %v\n", err)
+		// 		os.Exit(1)
+
+		// 	}
+		// 	defer f.Close()
+
+		//cp.setScanner(f)
+
+		// tabs := make([]int, 0)
+		// titles := make([]string, 0)
+		// details := make([]string, 0)
+		// lineNums := make([]int, 0)
+
+		// call new func here
+		for k, v := range cp.localFuncMap {
+
+			if func0 == k {
+
+				//log.Printf("%d found func: %v parsing from line %d to %d", lineNum, k, v.StartLine, v.EndLine)
+				// go to this func and scan it next
+				//currentOffset := pos
+				//p.tabOffset++
+
+				funcReader := bytes.NewReader(v.Bytes)
+				if err := cp.parseCode(funcReader, v.StartLine); err != nil {
+					log.Fatalf("error parsing code %v ", err)
+				}
+
+				// 	}
+				// }
+
+				// if err := cp.parseCode(f, 0, 0, 0, 0); err != nil {
+				// 	log.Fatalf("error parsing code: %v", err)
+				// }
+
+				if len(cp.titles) > 0 {
+					declareIndexAndNameVar(buf, cp.titles, cp.lineNums, cp.runtimeLineNums)
+					declareTabAndDetailVar(buf, cp.details, cp.tabs)
+					fmt.Fprintf(buf, "\n\n")
+					_, err = fmt.Fprintf(buf, indexToRule)
+					fmt.Fprintf(buf, "\n\n")
+					_, err = fmt.Fprintf(buf, numToIdx)
+					fmt.Fprintf(buf, "\n\n")
+					_, err = fmt.Fprintf(buf, searchInts, len(cp.lineNums))
+					fmt.Fprintf(buf, "\n\n")
+					_, err = fmt.Fprintf(buf, getRule)
+					fmt.Fprintf(buf, "\n\n")
+					_, err = fmt.Fprintf(buf, logger)
+					fmt.Fprintf(buf, "\n\n")
+					_, err = fmt.Fprintf(buf, summary)
+
+					fmt.Fprintf(buf, "\n\n")
+					writeAppendChildFunc(buf, maxTabs(cp.tabs))
+
+				}
+
 			}
-			fmt.Println(file)
-			f, err := os.Open(file)
+
+			//log.Printf("bytes string: %v", buf.String())
+			src, err := format.Source(buf.Bytes())
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "open file: %v\n", err)
-				os.Exit(1)
-
-			}
-			defer f.Close()
-
-			//cp.setScanner(f)
-
-			// tabs := make([]int, 0)
-			// titles := make([]string, 0)
-			// details := make([]string, 0)
-			// lineNums := make([]int, 0)
-
-			// call new func here
-
-			if err := cp.parseCode(f, 0, 0, 0, 0); err != nil {
-				log.Fatalf("error parsing code: %v", err)
-			}
-
-			if len(cp.titles) > 0 {
-				declareIndexAndNameVar(buf, cp.titles, cp.lineNums)
-				declareTabAndDetailVar(buf, cp.details, cp.tabs)
-				fmt.Fprintf(buf, "\n\n")
-				_, err = fmt.Fprintf(buf, indexToRule)
-				fmt.Fprintf(buf, "\n\n")
-				_, err = fmt.Fprintf(buf, numToIdx)
-				fmt.Fprintf(buf, "\n\n")
-				_, err = fmt.Fprintf(buf, searchInts, len(cp.lineNums))
-				fmt.Fprintf(buf, "\n\n")
-				_, err = fmt.Fprintf(buf, getRule)
-				fmt.Fprintf(buf, "\n\n")
-				_, err = fmt.Fprintf(buf, logger)
-				fmt.Fprintf(buf, "\n\n")
-				_, err = fmt.Fprintf(buf, summary)
-
-				fmt.Fprintf(buf, "\n\n")
-				writeAppendChildFunc(buf, maxTabs(cp.tabs))
+				log.Fatalf("error formatting code: %v", err)
 
 			}
 
-		}
-
-		//log.Printf("bytes string: %v", buf.String())
-		src, err := format.Source(buf.Bytes())
-		if err != nil {
-			log.Fatalf("error formatting code: %v", err)
+			err = ioutil.WriteFile(strings.Join(pathSlice, "/"), src, 0644)
+			if err != nil {
+				log.Fatalf("writing output: %s", err)
+			}
 
 		}
-
-		err = ioutil.WriteFile(strings.Join(pathSlice, "/"), src, 0644)
-		if err != nil {
-			log.Fatalf("writing output: %s", err)
-		}
-
 	}
 }
 
 type codeParser struct {
-	titles       []string
-	details      []string
-	tabs         []int
-	lineNums     []int
-	tabOffset    int
-	localFuncMap map[string]posRange
+	titles          []string
+	details         []string
+	tabs            []int
+	lineNums        []int
+	runtimeLineNums []int
+	tabOffset       int
+	localFuncMap    map[string]posRange
 	//scanner      *bufio.Scanner
-	scanOffset     int64
+	//scanOffset     int64
 	callerLineHist []int
 	//	buf          *bytes.Buffer
 }
@@ -181,9 +240,11 @@ type codeParser struct {
 func (p *codeParser) reset() {
 	p.titles = []string{}
 	p.details = []string{}
-	p.tabs = []int{}
+	//p.tabs = []int{}
 	p.lineNums = []int{}
-	p.tabOffset = 0
+	p.runtimeLineNums = []int{}
+	//p.tabOffset = 0
+	p.callerLineHist = []int{}
 
 }
 
@@ -210,81 +271,69 @@ func (p *codeParser) setScanner(f io.ReadSeeker) {
 }
 
 type posRange struct {
-	OffsetStart int64
+	OffsetStart int
+	OffsetEnd   int
+	Bytes       []byte
 	StartLine   int
 	EndLine     int
 }
 
-func (p *codeParser) parseCode(f io.ReadSeeker, offsetStart int64, parseLineOffsetStart, parseLineOffsetEnd, callerLine int) error {
+func (p *codeParser) parseCode(f io.Reader, callerLine int) error {
 
 	scanner := bufio.NewScanner(f)
-
-	scanOffset := offsetStart
-	scanLines := func(data []byte, atEOF bool) (advance int, token []byte, err error) {
-		advance, token, err = bufio.ScanLines(data, atEOF)
-		scanOffset += int64(advance)
-		return
-	}
-	scanner.Split(scanLines)
 
 	if callerLine > 0 {
 		p.callerLineHist = append(p.callerLineHist, callerLine)
 	}
 
+	origTabs := p.tabOffset
 	defer func() {
-		p.tabOffset--
+
 		if len(p.callerLineHist) > 0 {
 			p.callerLineHist = p.callerLineHist[:len(p.callerLineHist)-1]
 		}
-		log.Printf("seek back to where we left off: %v", offsetStart)
-		if _, err := f.Seek(offsetStart, 0); err != nil {
-			log.Fatalf("couldn't seek back to offset start: %v", err)
-		}
+
 	}()
 
 	// this tells us we just finished a rule
 	var checkDetails bool
 	var detailBuilder strings.Builder
 
-	lineNum := 1
-	if parseLineOffsetStart > lineNum {
-		lineNum = parseLineOffsetStart
-	}
-
-	if _, err := f.Seek(offsetStart, 0); err != nil {
-		return err
-	}
+	lineNum := 0
 
 	for scanner.Scan() {
 
 		//log.Printf("linenum: %d", lineNum)
 		lineText := scanner.Text()
 		// skip the first line
-		if lineNum < parseLineOffsetStart {
-			continue
-		}
-		if parseLineOffsetEnd > 0 && lineNum >= parseLineOffsetEnd {
-			break
-		}
+
 		if strings.HasPrefix(strings.TrimSpace(lineText), "// RULE:") {
-			log.Printf("line: %d: %s", lineNum, strings.TrimPrefix(strings.TrimSpace(lineText), "// RULE: "))
+			//log.Printf("line: %d: %s", lineNum, strings.TrimPrefix(strings.TrimSpace(lineText), "// RULE: "))
 			p.titles = append(p.titles, strings.TrimPrefix(strings.TrimSpace(lineText), "// RULE: "))
+			log.Printf("\ntabs before: %#v", p.tabs)
+			log.Printf("offset: %v", p.tabOffset)
 			p.tabs = append(p.tabs, countTabs(lineText, p.tabOffset))
+			log.Printf("tabs after: %#v", p.tabs)
+			log.Printf("line: %v", lineText)
 			p.lineNums = append(p.lineNums, lineNum+sum(p.callerLineHist))
 			checkDetails = true
 
 			// make map of hash to index
 
 		} else if checkDetails && strings.HasPrefix(strings.TrimSpace(lineText), "//") {
+			//log.Println("check detail and is a comment")
 			detailBuilder.WriteString(strings.TrimPrefix(strings.TrimSpace(lineText), "// "))
 
 		} else if checkDetails {
+			//log.Println("check detail and is not a comment, log the runtime line")
 			p.details = append(p.details, detailBuilder.String())
+			p.runtimeLineNums = append(p.runtimeLineNums, lineNum+sum(p.callerLineHist))
 			checkDetails = false
 			detailBuilder.Reset()
 		} else if strings.HasPrefix(strings.TrimSpace(lineText), "//") {
-
+			//log.Println("comments, no action")
 		} else {
+			//log.Printf("not a comment, check for functs to scan: %s", lineText)
 
 			// loop over package func decl names
 			// check if this line calls any of them
@@ -293,12 +342,13 @@ func (p *codeParser) parseCode(f io.ReadSeeker, offsetStart int64, parseLineOffs
 
 				if strings.Contains(lineText, fmt.Sprintf("%s(", k)) && v.StartLine != lineNum {
 
-					log.Printf("%d found func: %v parsing from line %d to %d", lineNum, k, v.StartLine, v.EndLine)
+					log.Printf("%d found func: %v parsing", lineNum, k)
 					// go to this func and scan it next
 					//currentOffset := pos
-					p.tabOffset++
 
-					if err := p.parseCode(f, v.OffsetStart, v.StartLine, v.EndLine, lineNum); err != nil {
+					p.tabOffset += countTabs(lineText, p.tabOffset)
+					funcReader := bytes.NewReader(v.Bytes)
+					if err := p.parseCode(funcReader, lineNum); err != nil {
 						log.Fatalf("error parsing code %v tab offset: %d", err, p.tabOffset)
 					}
 
@@ -312,7 +362,11 @@ func (p *codeParser) parseCode(f io.ReadSeeker, offsetStart int64, parseLineOffs
 	if err := scanner.Err(); err != nil && err != io.EOF {
 		return err
 	}
+	p.tabOffset -= origTabs
 
+	if p.tabOffset < 0 {
+		p.tabOffset = 0
+	}
 	return nil
 
 }
@@ -331,12 +385,16 @@ func maxTabs(tabs []int) int {
 
 func countTabs(s string, tabOffset int) int {
 
+	if tabOffset < 0 {
+		tabOffset = 0
+	}
 	for k, v := range s {
 		if v != '\t' {
 			return k + tabOffset
 		}
 	}
-	return 0 + tabOffset
+	log.Println("got zero tabs")
+	return tabOffset
 }
 
 // // custom stringer
@@ -416,7 +474,7 @@ func declareTabAndDetailVar(b *bytes.Buffer, details []string, tabs []int) {
 }
 
 // createTabAndDetailDecl returns the pair of declarations for the run. The caller will add "const" and "var".
-func createTabAndDetailDecl(comments []string, lineNums []int) (string, string, string) {
+func createTabAndDetailDecl(comments []string, tabCounts []int) (string, string, string) {
 	b := new(bytes.Buffer)
 	indexes := make([]int, len(comments))
 	for i := range comments {
@@ -437,7 +495,7 @@ func createTabAndDetailDecl(comments []string, lineNums []int) (string, string, 
 	index := b.String()
 	b.Reset()
 	fmt.Fprintf(b, "_atm_logger_tab_counts = [...]int{")
-	for i, v := range lineNums {
+	for i, v := range tabCounts {
 		if i > 0 {
 			fmt.Fprintf(b, ", ")
 		}
@@ -448,18 +506,19 @@ func createTabAndDetailDecl(comments []string, lineNums []int) (string, string, 
 }
 
 // declareIndexAndNameVar is the single-run version of declareIndexAndNameVars
-func declareIndexAndNameVar(b *bytes.Buffer, comments []string, lineNums []int) {
-	index, name, lineNumStr := createIndexAndNameDecl(comments, lineNums)
+func declareIndexAndNameVar(b *bytes.Buffer, comments []string, lineNums, runtimeLineNums []int) {
+	index, name, lineNumStr, runtimeLineNumStr := createIndexAndNameDecl(comments, lineNums, runtimeLineNums)
 	fmt.Fprintf(b, "const %s\n", name)
 	fmt.Fprintf(b, "var %s\n", index)
 	fmt.Fprintf(b, "var %s\n", lineNumStr)
+	fmt.Fprintf(b, "var %s\n", runtimeLineNumStr)
 
 	//fmt.Fprintf(b, stringOneRun, "_atm_logger_name")
 
 }
 
 // createIndexAndNameDecl returns the pair of declarations for the run. The caller will add "const" and "var".
-func createIndexAndNameDecl(comments []string, lineNums []int) (string, string, string) {
+func createIndexAndNameDecl(comments []string, lineNums, runtimeLineNums []int) (string, string, string, string) {
 	b := new(bytes.Buffer)
 	indexes := make([]int, len(comments))
 	for i := range comments {
@@ -487,7 +546,18 @@ func createIndexAndNameDecl(comments []string, lineNums []int) (string, string, 
 		fmt.Fprintf(b, "%d", v)
 	}
 	fmt.Fprintf(b, "}")
-	return index, nameConst, b.String()
+	lineNumStr := b.String()
+	b.Reset()
+	fmt.Fprintf(b, "_atm_logger_runtime_line_nums = [...]int{")
+	for i, v := range runtimeLineNums {
+		if i > 0 {
+			fmt.Fprintf(b, ", ")
+		}
+		fmt.Fprintf(b, "%d", v)
+	}
+	fmt.Fprintf(b, "}")
+
+	return index, nameConst, lineNumStr, b.String()
 }
 
 const indexToRule = `func idxToRule(i int) string {
@@ -507,16 +577,23 @@ func idxToDetail(i int) string {
 `
 
 const numToIdx = `func lineNumToIndex(i int) int {
-    k := searchInts(_atm_logger_line_nums, i)
-    if _atm_logger_line_nums[k-1] == i-1 {	
-	return k - 1
-    }
-    return -1
+    k := searchInts(_atm_logger_runtime_line_nums, i)
+if k >= 0{
+    return k
+} 
+return -1
+
 }
 `
 
 const searchInts = `func searchInts(a [%d]int, x int) int {
-	return sort.Search(len(a), func(i int) bool { return a[i] >= x })
+		for k, v := range a {
+	
+		if v == x {
+			return k
+		}
+	}
+	return -1
 }
 `
 
@@ -526,7 +603,7 @@ func GetRule(runtimeLine int) string {
 }
 `
 
-const logger = `type logger struct {
+const logger = `type Logger struct {
 	RuntimeLines []int
 	TitleArgs    [][]interface{}
 	DetailArgs   [][]interface{}
@@ -534,52 +611,58 @@ const logger = `type logger struct {
 	InitFuncInt  int
 }
 
-func (l *logger) newLogger() {
-	l.InitFunc = getCallerFunc()
+func newLogger() *Logger {
+
+	return &Logger{
+		InitFunc: getCallerFunc(),
+	}
 
 }
+
 
 func getCallerFunc() string {
 
 	pcs := make([]uintptr, 10)
-	n := runtime.Callers(2, pcs)
+	n := runtime.Callers(3, pcs)
 	pcs = pcs[:n]
 
-	frameLen := 0
+	//frameLen := 0
 	frames := runtime.CallersFrames(pcs)
 	for {
 		frame, more := frames.Next()
 		if !more {
 			break
 		}
-		log.Printf("frame.Function: %v", frame.Function)
+		//log.Printf("frame.Function: %v", frame.Function)
 		return frame.Function
 	}
 
 	return ""
 }
 
-func (l *logger) SetTitle(args ...interface{}) *logger {
-
+func (l *Logger) SetTitle(args ...interface{}) *Logger {
 	var previousLines []int
 	// _, _, line, _ := runtime.Caller(1)
 	// l.RuntimeLines = append(l.RuntimeLines, line)
 	// l.TitleArgs = append(l.TitleArgs, args)
 
 	pcs := make([]uintptr, 10)
-	n := runtime.Callers(1, pcs)
+	n := runtime.Callers(2, pcs)
 	pcs = pcs[:n]
 
-	frameLen := 0
+	//frameLen := 0
 	frames := runtime.CallersFrames(pcs)
 	for {
 		frame, more := frames.Next()
 		if !more {
 			break
 		}
-		ff := frame.Function
+		// ffSlice := strings.Split(frame.Function, "/")
+		// ff := strings.TrimLeft(ffSlice[len(ffSlice)-1], "sample-data.")
+
+		//log.Printf("frame func: %v line: %v, initfunc: %v ", frame.Function, frame.Line, l.InitFunc)
 		previousLines = append(previousLines, frame.Line)
-		if ff == l.InitFunc {
+		if frame.Function == l.InitFunc {
 
 			break
 		}
@@ -591,15 +674,17 @@ func (l *logger) SetTitle(args ...interface{}) *logger {
 	return l
 }
 
-func (l *logger) SetDetail(args ...interface{}) {
+func (l *Logger) SetDetail(args ...interface{}) {
 	l.DetailArgs = append(l.DetailArgs, args)
 }
 
 
-func (l *logger) GetSummaryAll() RuleData {
+func (l *Logger) GetSummaryAll() RuleData {
     
+
 	var rs RuleData
 	runtimeIdx := 0
+	//log.Printf("l.RuntimeLines: %#v", l.RuntimeLines)
 	nextTriggeredIdx := lineNumToIndex(l.RuntimeLines[runtimeIdx])
 	lastTab := 0
 	firstTab := 0
@@ -608,7 +693,7 @@ func (l *logger) GetSummaryAll() RuleData {
 
 		tab := _atm_logger_tab_counts[k]
 
-		// log.Printf("\n\nidx: %d", k)
+		// log.Printf("\n\nidx: %d lineNum: %d", k, ln)
 		// log.Printf("tab: %d", tab)
 		// log.Printf("nextTriggeredIdx: %d", nextTriggeredIdx)
 		if firstTab == 0 {
@@ -635,7 +720,7 @@ func (l *logger) GetSummaryAll() RuleData {
 
 		}
 		tabDiff := tab - firstTab
-		//log.Printf("tabDiff: %d", tabDiff)
+		//log.Printf("tabDiff: %!d(MISSING)", tabDiff)
 
 		if _, ok := tabNumCount[tabDiff]; ok {
 			if lastTab > tab {
@@ -652,7 +737,7 @@ func (l *logger) GetSummaryAll() RuleData {
 		} else {
 			tabNumCount[tabDiff] = 0
 		}
-		//log.Printf("tabNumCount: %d", tabNumCount)
+		//log.Printf("tabNumCount: %!d(MISSING)", tabNumCount)
 		rs.AppendChild(rd, tabNumCount, tabDiff)
 		lastTab = tab
 	}
@@ -663,7 +748,7 @@ func (l *logger) GetSummaryAll() RuleData {
 
 
 
-func (l *logger) GetSummaryTriggered() RuleData {
+func (l *Logger) GetSummaryTriggered() RuleData {
 
 
 	return RuleData{}

@@ -1,8 +1,8 @@
 package sampledata
 
-//go:generate atm-logger
+//go:generate atm-logger -func=CompareInt
 func CompareInt(a, b, c, d int) *logger {
-	l := &logger{}
+	l := newLogger()
 	if a < b {
 		// RULE: a (%v)lessn than  b(%v), do something
 		// some details here %v
