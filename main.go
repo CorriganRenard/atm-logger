@@ -709,7 +709,7 @@ func (l *Logger) GetSummaryAll() RuleData {
 		if nextTriggeredIdx == k {
 
 			rd.Triggered = true
-			rd.Open = true
+			rd.ShowChildren = true
 			rd.Title = fmt.Sprintf(idxToRule(k), l.TitleArgs[runtimeIdx]...)
 			rd.Detail = fmt.Sprintf(idxToDetail(k), l.DetailArgs[runtimeIdx]...)
 			runtimeIdx++
@@ -773,43 +773,6 @@ const summary = `type RuleData struct{
         Children []RuleData
 	ShowDetail   bool
 	ShowChildren bool
-}
-
-// UI Methods
-
-// CloseDetail hides the detail info
-func (rd *RuleData) CloseDetail() {
-	rd.ShowDetail = false
-}
-
-// ShowDetail shows the detail info
-func (rd *RuleData) OpenDetail() {
-	rd.ShowDetail = true
-}
-
-// CloseChildren hides the children info
-func (rd *RuleData) CloseChildren() {
-	rd.ShowChildren = false
-}
-
-// ShowChildren displays the children of this rule
-func (rd *RuleData) OpenChildren() {
-	rd.ShowChildren = true
-}
-
-// ToggleChildren toggles the children open/closed
-func (rd *RuleData) ToggleChildren() {
-	rd.ShowChildren = rd.ShowChildren != true
-}
-
-// ToggleDetail toggles the detail open/closed
-func (rd *RuleData) ToggleDetail() {
-	rd.ShowDetail = rd.ShowDetail != true
-}
-
-// ToggleRule toggles the detail open/closed
-func (rd *RuleData) ToggleRule() {
-	rd.ShowRule = rd.ShowRule != true
 }
 
 // UI Methods
