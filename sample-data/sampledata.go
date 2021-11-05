@@ -1,8 +1,12 @@
 package sampledata
 
 //go:generate atm-logger -func=CompareInt
-func CompareInt(a, b, c, d int) *logger {
+func CompareInt(a, b, c, d int) *Logger {
 	l := newLogger()
+
+	// RULE: Start compare int
+	l.SetTitle().SetDetail()
+
 	if a < b {
 		// RULE: a (%v)lessn than  b(%v), do something
 		// some details here %v
@@ -33,7 +37,11 @@ func CompareInt(a, b, c, d int) *logger {
 
 }
 
-func CompareInt2(a, b int, l *logger) {
+func CompareInt2(a, b int, l *Logger) {
+
+	// RULE: Start compare int2
+	l.SetTitle().SetDetail()
+
 	if a < b {
 		// RULE: nested func  a (%v)lessn than  b(%v), do something
 		// some details here %v

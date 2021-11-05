@@ -2,19 +2,18 @@ package sampledata
 
 import "fmt"
 import "strconv"
-import "log"
 import "runtime"
 
-const _atm_logger_name = "a (%v)lessn than  b(%v), do somethinga (%v) greater than  b(%v), do something elsea (%v) == b (%v), do somethingnested func  a (%v)lessn than  b(%v), do somethingnested func a (%v) greater than  b(%v), do something elsenested a (%v) == b (%v), do somethingc (%v) < d (%v), do something elsec (%v) > d (%v), do something else once morec (%v) == d (%v), do something else again"
+const _atm_logger_name = "Start compare inta (%v)lessn than  b(%v), do somethinga (%v) greater than  b(%v), do something elsea (%v) == b (%v), do somethingStart compare int2nested func  a (%v)lessn than  b(%v), do somethingnested func a (%v) greater than  b(%v), do something elsenested a (%v) == b (%v), do somethingc (%v) < d (%v), do something elsec (%v) > d (%v), do something else once morec (%v) == d (%v), do something else again"
 
-var _atm_logger_index = [...]uint16{0, 37, 82, 112, 162, 219, 256, 290, 334, 375}
-var _atm_logger_line_nums = [...]int{7, 11, 15, 56, 60, 64, 21, 24, 27}
-var _atm_logger_runtime_line_nums = [...]int{9, 13, 16, 58, 62, 65, 22, 25, 28}
+var _atm_logger_index = [...]uint16{0, 17, 54, 99, 129, 147, 197, 254, 291, 325, 369, 410}
+var _atm_logger_line_nums = [...]int{7, 11, 15, 19, 24, 28, 32, 36, 25, 28, 31}
+var _atm_logger_runtime_line_nums = [...]int{8, 13, 17, 20, 25, 30, 34, 37, 26, 29, 32}
 
 const _atm_logger_detail = "some details here %vand here are some more details... %ssome details here %vand here are some more details... %s"
 
-var _atm_logger_detail_index = [...]uint8{0, 20, 56, 56, 76, 112, 112, 112, 112, 112}
-var _atm_logger_tab_counts = [...]int{2, 2, 2, 3, 3, 3, 3, 3, 3}
+var _atm_logger_detail_index = [...]uint8{0, 0, 20, 56, 56, 56, 76, 112, 112, 112, 112, 112}
+var _atm_logger_tab_counts = [...]int{1, 2, 2, 2, 3, 4, 4, 4, 3, 3, 3}
 
 func idxToRule(i int) string {
 	if i >= len(_atm_logger_index)-1 {
@@ -32,14 +31,14 @@ func idxToDetail(i int) string {
 
 func lineNumToIndex(i int) int {
 	k := searchInts(_atm_logger_runtime_line_nums, i)
-	if k > 0 {
+	if k >= 0 {
 		return k
 	}
 	return -1
 
 }
 
-func searchInts(a [9]int, x int) int {
+func searchInts(a [11]int, x int) int {
 	for k, v := range a {
 
 		if v == x {
@@ -54,7 +53,7 @@ func GetRule(runtimeLine int) string {
 	return idxToRule(lineNumToIndex(runtimeLine))
 }
 
-type logger struct {
+type Logger struct {
 	RuntimeLines []int
 	TitleArgs    [][]interface{}
 	DetailArgs   [][]interface{}
@@ -62,9 +61,9 @@ type logger struct {
 	InitFuncInt  int
 }
 
-func newLogger() *logger {
+func newLogger() *Logger {
 
-	return &logger{
+	return &Logger{
 		InitFunc: getCallerFunc(),
 	}
 
@@ -90,7 +89,7 @@ func getCallerFunc() string {
 	return ""
 }
 
-func (l *logger) SetTitle(args ...interface{}) *logger {
+func (l *Logger) SetTitle(args ...interface{}) *Logger {
 	var previousLines []int
 	// _, _, line, _ := runtime.Caller(1)
 	// l.RuntimeLines = append(l.RuntimeLines, line)
@@ -110,7 +109,7 @@ func (l *logger) SetTitle(args ...interface{}) *logger {
 		// ffSlice := strings.Split(frame.Function, "/")
 		// ff := strings.TrimLeft(ffSlice[len(ffSlice)-1], "sample-data.")
 
-		log.Printf("frame func: %!v(MISSING) line: %!v(MISSING), initfunc: %!v(MISSING) ", frame.Function, frame.Line, l.InitFunc)
+		//log.Printf("frame func: %!v(MISSING) line: %!v(MISSING), initfunc: %!v(MISSING) ", frame.Function, frame.Line, l.InitFunc)
 		previousLines = append(previousLines, frame.Line)
 		if frame.Function == l.InitFunc {
 
@@ -124,15 +123,15 @@ func (l *logger) SetTitle(args ...interface{}) *logger {
 	return l
 }
 
-func (l *logger) SetDetail(args ...interface{}) {
+func (l *Logger) SetDetail(args ...interface{}) {
 	l.DetailArgs = append(l.DetailArgs, args)
 }
 
-func (l *logger) GetSummaryAll() RuleData {
+func (l *Logger) GetSummaryAll() RuleData {
 
 	var rs RuleData
 	runtimeIdx := 0
-	log.Printf("l.RuntimeLines: %!v(MISSING)", l.RuntimeLines)
+	//log.Printf("l.RuntimeLines: %!v(MISSING)", l.RuntimeLines)
 	nextTriggeredIdx := lineNumToIndex(l.RuntimeLines[runtimeIdx])
 	lastTab := 0
 	firstTab := 0
@@ -157,7 +156,7 @@ func (l *logger) GetSummaryAll() RuleData {
 		if nextTriggeredIdx == k {
 
 			rd.Triggered = true
-			rd.Open = true
+			rd.ShowChildren = true
 			rd.Title = fmt.Sprintf(idxToRule(k), l.TitleArgs[runtimeIdx]...)
 			rd.Detail = fmt.Sprintf(idxToDetail(k), l.DetailArgs[runtimeIdx]...)
 			runtimeIdx++
@@ -194,7 +193,7 @@ func (l *logger) GetSummaryAll() RuleData {
 
 }
 
-func (l *logger) GetSummaryTriggered() RuleData {
+func (l *Logger) GetSummaryTriggered() RuleData {
 
 	return RuleData{}
 }
@@ -208,13 +207,52 @@ func sum(s []int) int {
 }
 
 type RuleData struct {
-	Title     string
-	HasDetail bool
-	Detail    string
-	TabNum    int
-	Triggered bool
-	Open      bool
-	Children  []RuleData
+	Title        string
+	HasDetail    bool
+	Detail       string
+	TabNum       int
+	Triggered    bool
+	Children     []RuleData
+	ShowDetail   bool
+	ShowChildren bool
+	ShowRule     bool
+}
+
+// UI Methods
+
+// CloseDetail hides the detail info
+func (rd *RuleData) CloseDetail() {
+	rd.ShowDetail = false
+}
+
+// OpenDetail shows the detail info
+func (rd *RuleData) OpenDetail() {
+	rd.ShowDetail = true
+}
+
+// CloseChildren hides the children info
+func (rd *RuleData) CloseChildren() {
+	rd.ShowChildren = false
+}
+
+// OpenChildren displays the children of this rule
+func (rd *RuleData) OpenChildren() {
+	rd.ShowChildren = true
+}
+
+// ToggleChildren toggles the children open/closed
+func (rd *RuleData) ToggleChildren() {
+	rd.ShowChildren = rd.ShowChildren != true
+}
+
+// ToggleDetail toggles the detail open/closed
+func (rd *RuleData) ToggleDetail() {
+	rd.ShowDetail = rd.ShowDetail != true
+}
+
+// ToggleRule toggles the detail open/closed
+func (rd *RuleData) ToggleRule() {
+	rd.ShowRule = rd.ShowRule != true
 }
 
 func (rs *RuleData) AppendChild(rd RuleData, tabNameCount map[int]int, lastTab int) {
@@ -225,5 +263,7 @@ func (rs *RuleData) AppendChild(rd RuleData, tabNameCount map[int]int, lastTab i
 		rs.Children[tabNameCount[0]].Children = append(rs.Children[tabNameCount[0]].Children, rd)
 	case 2:
 		rs.Children[tabNameCount[0]].Children[tabNameCount[1]].Children = append(rs.Children[tabNameCount[0]].Children[tabNameCount[1]].Children, rd)
+	case 3:
+		rs.Children[tabNameCount[0]].Children[tabNameCount[1]].Children[tabNameCount[2]].Children = append(rs.Children[tabNameCount[0]].Children[tabNameCount[1]].Children[tabNameCount[2]].Children, rd)
 	}
 }

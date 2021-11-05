@@ -773,6 +773,7 @@ const summary = `type RuleData struct{
         Children []RuleData
 	ShowDetail   bool
 	ShowChildren bool
+	ShowRule bool
 }
 
 // UI Methods
