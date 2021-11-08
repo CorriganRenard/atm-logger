@@ -173,7 +173,7 @@ func main() {
 				//p.tabOffset++
 
 				funcReader := bytes.NewReader(v.Bytes)
-				if err := cp.parseCode(funcReader, v.StartLine); err != nil {
+				if err := cp.parseCode(funcReader, v.StartLine, 0); err != nil {
 					log.Fatalf("error parsing code %v ", err)
 				}
 
@@ -186,7 +186,7 @@ func main() {
 
 				if len(cp.titles) > 0 {
 					declareIndexAndNameVar(buf, cp.titles, cp.lineNums, cp.runtimeLineNums)
-					declareTabAndDetailVar(buf, cp.details, cp.tabs)
+					declareTabAndDetailVar(buf, cp.details, cp.hints, cp.tabs)
 					fmt.Fprintf(buf, "\n\n")
 					_, err = fmt.Fprintf(buf, indexToRule)
 					fmt.Fprintf(buf, "\n\n")
@@ -225,6 +225,7 @@ func main() {
 
 type codeParser struct {
 	titles          []string
+	hints           []string
 	details         []string
 	tabs            []int
 	lineNums        []int
@@ -278,13 +279,21 @@ type posRange struct {
 	EndLine     int
 }
 
-func (p *codeParser) parseCode(f io.Reader, callerLine int) error {
+func getTitleAndHint(s string) (string, string) {
+
+	strSlice := strings.Split(s, "HINT: ")
+	if len(strSlice) > 1 {
+		return strSlice[0], strSlice[1]
+	}
+	return strSlice[0], ""
+}
+func (p *codeParser) parseCode(f io.Reader, funcLine, callerLine int) error {
 
 	scanner := bufio.NewScanner(f)
 
-	if callerLine > 0 {
-		p.callerLineHist = append(p.callerLineHist, callerLine)
-	}
+	p.callerLineHist = append(p.callerLineHist, callerLine+funcLine)
+
+	log.Printf("caller line hist: %#v", p.callerLineHist)
 
 	origTabs := p.tabOffset
 	defer func() {
@@ -309,7 +318,10 @@ func (p *codeParser) parseCode(f io.Reader, callerLine int) error {
 
 		if strings.HasPrefix(strings.TrimSpace(lineText), "// RULE:") {
 			//log.Printf("line: %d: %s", lineNum, strings.TrimPrefix(strings.TrimSpace(lineText), "// RULE: "))
-			p.titles = append(p.titles, strings.TrimPrefix(strings.TrimSpace(lineText), "// RULE: "))
+
+			title, hint := getTitleAndHint(strings.TrimPrefix(strings.TrimSpace(lineText), "// RULE: "))
+			p.titles = append(p.titles, title)
+			p.hints = append(p.hints, hint)
 			log.Printf("\ntabs before: %#v", p.tabs)
 			log.Printf("offset: %v", p.tabOffset)
 			p.tabs = append(p.tabs, countTabs(lineText, p.tabOffset))
@@ -348,7 +360,7 @@ func (p *codeParser) parseCode(f io.Reader, callerLine int) error {
 
 					p.tabOffset += countTabs(lineText, p.tabOffset)
 					funcReader := bytes.NewReader(v.Bytes)
-					if err := p.parseCode(funcReader, lineNum); err != nil {
+					if err := p.parseCode(funcReader, v.StartLine, lineNum); err != nil {
 						log.Fatalf("error parsing code %v tab offset: %d", err, p.tabOffset)
 					}
 
@@ -463,10 +475,12 @@ func createAppendChildFunc(maxTab int) string {
 }
 
 // declareIndexAndNameVar is the single-run version of declareIndexAndNameVars
-func declareTabAndDetailVar(b *bytes.Buffer, details []string, tabs []int) {
-	index, name, tabStr := createTabAndDetailDecl(details, tabs)
+func declareTabAndDetailVar(b *bytes.Buffer, details, hints []string, tabs []int) {
+	index, name, indexHints, hintStr, tabStr := createTabAndDetailDecl(details, hints, tabs)
 	fmt.Fprintf(b, "const %s\n", name)
 	fmt.Fprintf(b, "var %s\n", index)
+	fmt.Fprintf(b, "const %s\n", hintStr)
+	fmt.Fprintf(b, "var %s\n", indexHints)
 	fmt.Fprintf(b, "var %s\n", tabStr)
 
 	//fmt.Fprintf(b, stringOneRun, "_atm_logger_name")
@@ -474,7 +488,7 @@ func declareTabAndDetailVar(b *bytes.Buffer, details []string, tabs []int) {
 }
 
 // createTabAndDetailDecl returns the pair of declarations for the run. The caller will add "const" and "var".
-func createTabAndDetailDecl(comments []string, tabCounts []int) (string, string, string) {
+func createTabAndDetailDecl(comments, hints []string, tabCounts []int) (string, string, string, string, string) {
 	b := new(bytes.Buffer)
 	indexes := make([]int, len(comments))
 	for i := range comments {
@@ -493,6 +507,29 @@ func createTabAndDetailDecl(comments []string, tabCounts []int) (string, string,
 	}
 	fmt.Fprintf(b, "}")
 	index := b.String()
+
+	// TODO write out hints text and index
+	b.Reset()
+	indexesHints := make([]int, len(hints))
+	for i := range hints {
+		b.WriteString(hints[i])
+		indexesHints[i] = b.Len()
+	}
+	hintsConst := fmt.Sprintf("_atm_logger_hints = %q", b.String())
+	hintsLen := b.Len()
+	b.Reset()
+	fmt.Fprintf(b, "_atm_logger_hints_index = [...]uint%d{0, ", usize(hintsLen))
+	for i, v := range indexesHints {
+		if i > 0 {
+			fmt.Fprintf(b, ", ")
+		}
+		fmt.Fprintf(b, "%d", v)
+	}
+	fmt.Fprintf(b, "}")
+	indexHints := b.String()
+
+	// up to here
+
 	b.Reset()
 	fmt.Fprintf(b, "_atm_logger_tab_counts = [...]int{")
 	for i, v := range tabCounts {
@@ -502,7 +539,7 @@ func createTabAndDetailDecl(comments []string, tabCounts []int) (string, string,
 		fmt.Fprintf(b, "%d", v)
 	}
 	fmt.Fprintf(b, "}")
-	return index, nameConst, b.String()
+	return index, nameConst, indexHints, hintsConst, b.String()
 }
 
 // declareIndexAndNameVar is the single-run version of declareIndexAndNameVars
@@ -572,6 +609,13 @@ func idxToDetail(i int) string {
 		return strconv.FormatInt(int64(i), 10)
 	}
 	return _atm_logger_detail[_atm_logger_detail_index[i]:_atm_logger_detail_index[i+1]]
+}
+
+func idxToHint(i int) string {
+	if i >= len(_atm_logger_hints_index)-1 {
+		return strconv.FormatInt(int64(i), 10)
+	}
+	return _atm_logger_hints[_atm_logger_hints_index[i]:_atm_logger_hints_index[i+1]]
 }
 
 `
@@ -684,7 +728,7 @@ func (l *Logger) GetSummaryAll() RuleData {
 
 	var rs RuleData
 	runtimeIdx := 0
-	//log.Printf("l.RuntimeLines: %#v", l.RuntimeLines)
+        //log.Printf("l.RuntimeLines: %#v", l.RuntimeLines)
 	nextTriggeredIdx := lineNumToIndex(l.RuntimeLines[runtimeIdx])
 	lastTab := 0
 	firstTab := 0
@@ -712,6 +756,8 @@ func (l *Logger) GetSummaryAll() RuleData {
 			rd.ShowChildren = true
 			rd.Title = fmt.Sprintf(idxToRule(k), l.TitleArgs[runtimeIdx]...)
 			rd.Detail = fmt.Sprintf(idxToDetail(k), l.DetailArgs[runtimeIdx]...)
+			rs.Summary = append(rs.Summary, idxToHint(k))
+
 			runtimeIdx++
 			if runtimeIdx < len(l.RuntimeLines) {
 				nextTriggeredIdx = lineNumToIndex(l.RuntimeLines[runtimeIdx])
@@ -774,6 +820,8 @@ const summary = `type RuleData struct{
 	ShowDetail   bool
 	ShowChildren bool
 	ShowRule bool
+	// Summary is a list of the hints (small descritpions for an overview of what it did)
+	Summary []string
 }
 
 // UI Methods

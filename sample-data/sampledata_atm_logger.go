@@ -1,18 +1,24 @@
 package sampledata
 
-import "fmt"
-import "strconv"
-import "runtime"
+import (
+	"fmt"
+	"runtime"
+	"strconv"
+)
 
-const _atm_logger_name = "Start compare inta (%v)lessn than  b(%v), do somethinga (%v) greater than  b(%v), do something elsea (%v) == b (%v), do somethingStart compare int2nested func  a (%v)lessn than  b(%v), do somethingnested func a (%v) greater than  b(%v), do something elsenested a (%v) == b (%v), do somethingc (%v) < d (%v), do something elsec (%v) > d (%v), do something else once morec (%v) == d (%v), do something else again"
+const _atm_logger_name = "Start compare inta (%v)lessn than  b(%v), do something a (%v) greater than  b(%v), do something else a (%v) == b (%v), do something Start compare int 2 nested func  a (%v)lessn than  b(%v), do somethingnested func a (%v) greater than  b(%v), do something elsenested a (%v) == b (%v), do somethingc (%v) < d (%v), do something elsec (%v) > d (%v), do something else once morec (%v) == d (%v), do something else again"
 
-var _atm_logger_index = [...]uint16{0, 17, 54, 99, 129, 147, 197, 254, 291, 325, 369, 410}
-var _atm_logger_line_nums = [...]int{7, 11, 15, 19, 24, 28, 32, 36, 25, 28, 31}
-var _atm_logger_runtime_line_nums = [...]int{8, 13, 17, 20, 25, 30, 34, 37, 26, 29, 32}
+var _atm_logger_index = [...]uint16{0, 17, 55, 101, 132, 152, 202, 259, 296, 330, 374, 415}
+var _atm_logger_line_nums = [...]int{9, 13, 17, 21, 70, 74, 78, 82, 29, 32, 35}
+var _atm_logger_runtime_line_nums = [...]int{10, 15, 19, 22, 71, 76, 80, 83, 30, 33, 36}
 
 const _atm_logger_detail = "some details here %vand here are some more details... %ssome details here %vand here are some more details... %s"
 
 var _atm_logger_detail_index = [...]uint8{0, 0, 20, 56, 56, 56, 76, 112, 112, 112, 112, 112}
+
+const _atm_logger_hints = "a<ba>belseCompareInt2"
+
+var _atm_logger_hints_index = [...]uint8{0, 0, 3, 6, 10, 21, 21, 21, 21, 21, 21, 21}
 var _atm_logger_tab_counts = [...]int{1, 2, 2, 2, 3, 4, 4, 4, 3, 3, 3}
 
 func idxToRule(i int) string {
@@ -130,6 +136,7 @@ func (l *Logger) SetDetail(args ...interface{}) {
 func (l *Logger) GetSummaryAll() RuleData {
 
 	var rs RuleData
+
 	runtimeIdx := 0
 	//log.Printf("l.RuntimeLines: %!v(MISSING)", l.RuntimeLines)
 	nextTriggeredIdx := lineNumToIndex(l.RuntimeLines[runtimeIdx])
@@ -159,6 +166,7 @@ func (l *Logger) GetSummaryAll() RuleData {
 			rd.ShowChildren = true
 			rd.Title = fmt.Sprintf(idxToRule(k), l.TitleArgs[runtimeIdx]...)
 			rd.Detail = fmt.Sprintf(idxToDetail(k), l.DetailArgs[runtimeIdx]...)
+			rs.Summary = append(rs.Summary, idxToHint(k))
 			runtimeIdx++
 			if runtimeIdx < len(l.RuntimeLines) {
 				nextTriggeredIdx = lineNumToIndex(l.RuntimeLines[runtimeIdx])
@@ -216,6 +224,8 @@ type RuleData struct {
 	ShowDetail   bool
 	ShowChildren bool
 	ShowRule     bool
+	// Summary is a list of the hints (small descritpions for an overview of what it did)
+	Summary []string
 }
 
 // UI Methods
