@@ -21,6 +21,8 @@ func TestCompareInt(t *testing.T) {
 func writeChildren(level *int, rd RuleData) {
 	newLevel := *level + 1
 	level = &newLevel
+
+	log.Printf("hints: %v", rd.Summary)
 	for _, ld := range rd.Children {
 		//log.Printf("rutnime line %d key: %d", v, k)
 		var tabs strings.Builder

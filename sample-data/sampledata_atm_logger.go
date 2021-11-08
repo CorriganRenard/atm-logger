@@ -1,10 +1,8 @@
 package sampledata
 
-import (
-	"fmt"
-	"runtime"
-	"strconv"
-)
+import "fmt"
+import "strconv"
+import "runtime"
 
 const _atm_logger_name = "Start compare inta (%v)lessn than  b(%v), do something a (%v) greater than  b(%v), do something else a (%v) == b (%v), do something Start compare int 2 nested func  a (%v)lessn than  b(%v), do somethingnested func a (%v) greater than  b(%v), do something elsenested a (%v) == b (%v), do somethingc (%v) < d (%v), do something elsec (%v) > d (%v), do something else once morec (%v) == d (%v), do something else again"
 
@@ -33,6 +31,13 @@ func idxToDetail(i int) string {
 		return strconv.FormatInt(int64(i), 10)
 	}
 	return _atm_logger_detail[_atm_logger_detail_index[i]:_atm_logger_detail_index[i+1]]
+}
+
+func idxToHint(i int) string {
+	if i >= len(_atm_logger_hints_index)-1 {
+		return strconv.FormatInt(int64(i), 10)
+	}
+	return _atm_logger_hints[_atm_logger_hints_index[i]:_atm_logger_hints_index[i+1]]
 }
 
 func lineNumToIndex(i int) int {
@@ -136,7 +141,6 @@ func (l *Logger) SetDetail(args ...interface{}) {
 func (l *Logger) GetSummaryAll() RuleData {
 
 	var rs RuleData
-
 	runtimeIdx := 0
 	//log.Printf("l.RuntimeLines: %!v(MISSING)", l.RuntimeLines)
 	nextTriggeredIdx := lineNumToIndex(l.RuntimeLines[runtimeIdx])
@@ -167,6 +171,7 @@ func (l *Logger) GetSummaryAll() RuleData {
 			rd.Title = fmt.Sprintf(idxToRule(k), l.TitleArgs[runtimeIdx]...)
 			rd.Detail = fmt.Sprintf(idxToDetail(k), l.DetailArgs[runtimeIdx]...)
 			rs.Summary = append(rs.Summary, idxToHint(k))
+
 			runtimeIdx++
 			if runtimeIdx < len(l.RuntimeLines) {
 				nextTriggeredIdx = lineNumToIndex(l.RuntimeLines[runtimeIdx])
