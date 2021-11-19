@@ -138,6 +138,7 @@ func (l *Logger) SetDetail(args ...interface{}) {
 	l.DetailArgs = append(l.DetailArgs, args)
 }
 
+// GetSummaryAll gets a list of all the possible logic and adds the runtime data to the list
 func (l *Logger) GetSummaryAll() RuleData {
 
 	var rs RuleData
@@ -204,6 +205,24 @@ func (l *Logger) GetSummaryAll() RuleData {
 
 	return rs
 
+}
+
+// GetSummaryHints gets a list of hints for one logic run (returns only the hints that ran)
+func (l *Logger) GetSummaryHints() []string {
+
+	var hints []string
+	runtimeIdx := 0
+	nextTriggeredIdx := lineNumToIndex(l.RuntimeLines[runtimeIdx])
+	for k, _ := range _atm_logger_line_nums {
+		if nextTriggeredIdx == k {
+			hints = append(hints, idxToHint(k))
+			runtimeIdx++
+			if runtimeIdx < len(l.RuntimeLines) {
+				nextTriggeredIdx = lineNumToIndex(l.RuntimeLines[runtimeIdx])
+			}
+		}
+	}
+	return hints
 }
 
 func (l *Logger) GetSummaryTriggered() RuleData {

@@ -685,6 +685,9 @@ func getCallerFunc() string {
 }
 
 func (l *Logger) SetTitle(args ...interface{}) *Logger {
+        if l == nil{
+                return nil
+        }
 	var previousLines []int
 	// _, _, line, _ := runtime.Caller(1)
 	// l.RuntimeLines = append(l.RuntimeLines, line)
@@ -719,6 +722,9 @@ func (l *Logger) SetTitle(args ...interface{}) *Logger {
 }
 
 func (l *Logger) SetDetail(args ...interface{}) {
+        if l == nil{
+              return
+        }
 	l.DetailArgs = append(l.DetailArgs, args)
 }
 
@@ -808,7 +814,7 @@ func (l *Logger) GetSummaryHints() []string {
 			}
 		}
 	}
-	return rs
+	return hints
 }
 
 
