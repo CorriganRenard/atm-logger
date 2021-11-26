@@ -385,10 +385,8 @@ func (p *codeParser) parseCode(f io.Reader, funcLine, callerLine int) error {
 
 func maxTabs(tabs []int) int {
 	maxTabs := 0
-	for k, v := range tabs {
-		if k == 0 {
-			maxTabs = v
-		} else if v > tabs[k-1] {
+	for _, v := range tabs {
+		if v > maxTabs {
 			maxTabs = v
 		}
 	}
@@ -452,6 +450,7 @@ func writeAppendChildFunc(b *bytes.Buffer, maxTab int) {
 
 func createAppendChildFunc(maxTab int) string {
 	b := new(bytes.Buffer)
+	log.Printf("maxTab: %v", maxTab)
 
 	b.WriteString(`(rs *RuleData) AppendChild(rd RuleData, tabNameCount map[int]int, lastTab int) {
 	switch lastTab {
