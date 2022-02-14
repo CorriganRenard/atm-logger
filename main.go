@@ -66,6 +66,7 @@ func main() {
 		fmt.Fprintf(buf, "package %s\n\n", pkg.Name)
 		fmt.Fprintf(buf, "import \"fmt\"\n")
 		fmt.Fprintf(buf, "import \"strconv\"\n")
+		fmt.Fprintf(buf, "import \"math\"\n")
 		//fmt.Fprintf(buf, "import \"sort\"\n")
 		//fmt.Fprintf(buf, "import \"log\"\n")
 		fmt.Fprintf(buf, "import \"runtime\"\n\n")
