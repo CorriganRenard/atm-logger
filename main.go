@@ -724,6 +724,18 @@ func (l *Logger) SetDetail(args ...interface{}) {
         if l == nil{
               return
         }
+	for k, argv := range args {
+		switch v := argv.(type) {
+		case float64:
+			if math.IsInf(v, 1) {
+				args[k] = 9999999
+			} else if math.IsInf(v, -1) {
+				args[k] = -999
+			}
+
+		}
+	}
+
 	l.DetailArgs = append(l.DetailArgs, args)
 }
 
